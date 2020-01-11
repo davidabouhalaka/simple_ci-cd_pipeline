@@ -1,29 +1,57 @@
-#Docker base image : Alpine Linux with OpenJDK JRE
-FROM openjdk:8-jre-alpine
+FROM maven:3.3.9-jdk-8
 
-#Check the java version
-RUN ["java", "-version"]
+ARG RELEASE_VERSION=1.0.0-SNAPSHOT
 
-#Install maven
-RUN apt-get update
-RUN apt-get install -y maven
+ARG API_NAME=blogpost-api
 
-#Set the working directory for RUN and ADD commands
-WORKDIR /code
+ARG API_BUILD_DIR=/opt/usr/src
 
-#Copy the SRC, LIB and pom.xml to WORKDIR
-ADD pom.xml /code/pom.xml
-ADD lib /code/lib
-ADD src /code/src
+ARG APP_HOME_DIR=/var/www/app
 
-#Build the code
-RUN ["mvn", "clean"]
-RUN ["mvn", "install"]
+ARG SPRING_PROFILES_ACTIVE=dev
 
-#Optional you can include commands to run test cases.
+ENV RELEASE_VERSION ${RELEASE_VERSION}
 
-#Port the container listens on
-EXPOSE 8081
+ENV API_FULL_NAME ${API_NAME}-${RELEASE_VERSION}
 
-#CMD to be executed when docker is run.
-ENTRYPOINT ["java","-jar","target/recruitment-service-0.0.1.jar"]
+ENV API_BUILD_DIR ${API_BUILD_DIR}
+
+ENV APP_HOME_DIR ${APP_HOME_DIR}
+
+ENV SPRING_PROFILES_ACTIVE ${SPRING_PROFILES_ACTIVE}
+
+EXPOSE 8080 8081
+
+USER root
+
+RUN mkdir -p ${APP_HOME_DIR} \
+
+    && groupadd -g 10000 appuser \
+
+    && useradd --home-dir ${APP_HOME_DIR} -u 10000 -g appuser appuser
+
+COPY . ${API_BUILD_DIR}
+
+RUN cd ${API_BUILD_DIR}/ \
+
+    && mvn clean package -Pjar -Dapi_name=${API_NAME} -Drelease_version=${RELEASE_VERSION} \
+
+    && cp ${API_BUILD_DIR}/target/${API_FULL_NAME}.jar ${APP_HOME_DIR}/ \
+
+    && cp ${API_BUILD_DIR}/files/entrypoint ${APP_HOME_DIR}/ \
+
+    && echo "java -jar -Dspring.profiles.active=${SPRING_PROFILES_ACTIVE} ${APP_HOME_DIR}/${API_FULL_NAME}.jar" > ${APP_HOME_DIR}/run \
+
+    && chmod -R 0766 ${APP_HOME_DIR} \
+
+    && chown -R appuser:appuser ${APP_HOME_DIR} \
+
+    && chmod g+w /etc/passwd
+
+WORKDIR ${APP_HOME_DIR}
+
+USER appuser
+
+ENTRYPOINT [ "./entrypoint" ]
+
+CMD ["./run"]
